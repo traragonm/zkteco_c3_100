@@ -135,4 +135,6 @@ public static class Glyph
     public const string Cancel = "";
     public const string Help = "";
     public const string Code = "";
+    public const string Copy = "";
+    public const string Save = "";
 }

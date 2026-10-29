@@ -13,6 +13,7 @@
 - **Điều khiển cửa**: mở N giây hoặc đóng ngay.
 - **Thông tin thiết bị**: serial, firmware, số cửa, giờ thiết bị; đồng bộ giờ từ PC sang thiết bị.
 - **Log kết nối** có màu theo cấp độ, đồng thời ghi ra file.
+- **Xem lại mã QR** của bất kỳ lượt quét nào: tạo lại ảnh QR từ nội dung, sao chép mã, lưu ảnh PNG.
 
 ## Yêu cầu
 
@@ -68,6 +69,7 @@ Tab **Sự kiện quét QR** hiện mỗi lượt quét: thời gian, cửa và 
 
 Bốn thẻ trên cùng hiện trạng thái kết nối, tổng lượt quét, số hợp lệ / từ chối, và trạng thái cửa 1 (cần có sensor cửa).
 
+- **Xem lại mã QR**: nhấp đúp vào một dòng (hoặc chọn dòng rồi nhấn Enter) để mở popup. Popup vẽ lại mã QR từ nội dung đã ghi và hiện chi tiết lượt quét. Trong popup có thể **Sao chép mã** (Ctrl+C) hoặc **Lưu ảnh PNG** (800 px).
 - **Xuất CSV** (Ctrl+S): lưu danh sách đang hiển thị ra một file CSV.
 - **Xoá**: xoá danh sách trên màn hình. File log trên đĩa vẫn giữ nguyên.
 

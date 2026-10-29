@@ -45,6 +45,20 @@ public partial class MainForm : Form
 
         gridEvents.DataSource = _events;
         gridEvents.CellPainting += GridEvents_CellPainting;
+        gridEvents.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) ShowQrDetail(e.RowIndex);
+        };
+        gridEvents.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter || gridEvents.CurrentRow is null) return;
+            e.SuppressKeyPress = true;
+            ShowQrDetail(gridEvents.CurrentRow.Index);
+        };
+        gridEvents.CellToolTipTextNeeded += (_, e) =>
+        {
+            if (e.RowIndex >= 0) e.ToolTipText = "Nhấp đúp (hoặc Enter) để xem mã QR";
+        };
 
         btnConnect.Click += async (_, _) =>
         {
@@ -382,6 +396,23 @@ public partial class MainForm : Form
         statScans.SetValue(total.ToString());
         statOkDeny.SetParts((_granted.ToString(), Theme.Success), (" / ", Theme.Faint), (_denied.ToString(), Theme.Danger));
         tabs.SetBadge(0, _events.Count > 0 ? _events.Count.ToString() : null);
+    }
+
+    private void ShowQrDetail(int rowIndex)
+    {
+        if (gridEvents.Rows[rowIndex].DataBoundItem is not AccessEvent ev) return;
+        try
+        {
+            using var dlg = new QrDetailForm(ev);
+            dlg.ShowDialog(this);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            // Nội dung quá dài so với dung lượng tối đa của QR, hoặc lỗi tạo ảnh.
+            _logger.Warn($"Không tạo được mã QR cho {ev.Code}: {ex.Message}");
+            MessageBox.Show(this, $"Không tạo được mã QR cho nội dung này.\n{ex.Message}", "Mã QR",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void ShowTab(int index)

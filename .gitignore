@@ -1,0 +1,13 @@
+# Build output / IDE
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# DLL PullSDK là của ZKTeco: không đưa lên repo, mỗi máy tự chép vào ZKTecoSDK/
+ZKTecoC3Manager/ZKTecoSDK/*.dll
+
+# Dữ liệu lúc chạy (có thể chứa token Verify API, log quét thẻ)
+settings.json
+logs/

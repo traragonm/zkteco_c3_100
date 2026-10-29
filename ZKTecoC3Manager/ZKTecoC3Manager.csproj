@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ZKTecoC3Manager</RootNamespace>
+    <AssemblyName>ZKTecoC3Manager</AssemblyName>
+    <!-- PullSDK (plcommpro.dll) phổ biến là bản 32-bit, nên build x86.
+         Nếu dùng bản PullSDK 64-bit thì đổi thành x64. -->
+    <PlatformTarget>x86</PlatformTarget>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <!-- Đặt các DLL của PullSDK (plcommpro.dll, plcomms.dll, plrscomm.dll,
+       pltcpcomm.dll, plusbcomm.dll, rscagent.dll, rscomm.dll, tcpcomm.dll,
+       usbcomm.dll, usbstd.dll...) vào thư mục ZKTecoSDK để tự copy ra output. -->
+  <!-- MainForm.Layout.cs là phần dựng giao diện bằng code của MainForm, không phải form riêng:
+       không mở bằng Designer và không nhúng resx riêng (tránh trùng ZKTecoC3Manager.MainForm.resources). -->
+  <ItemGroup>
+    <Compile Update="MainForm.Layout.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Remove="MainForm.Layout.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="ZKTecoSDK\*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

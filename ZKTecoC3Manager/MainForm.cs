@@ -199,10 +199,21 @@ public partial class MainForm : Form
             }
 
             _events.Insert(0, e);
-            _logger.Info($"Quét QR cửa {e.Door} ({e.Direction}): {e.Code}, PIN={e.Pin}, controller: {e.EventName}");
+            var unreadable = RtLogParser.IsUnreadableScan(e);
+            if (unreadable)
+                _logger.Warn($"Quét QR cửa {e.Door} ({e.Direction}): đầu đọc gửi mã 0 (không đọc được nội dung QR), controller: {e.EventName}");
+            else
+                _logger.Info($"Quét QR cửa {e.Door} ({e.Direction}): {e.Code}, PIN={e.Pin}, controller: {e.EventName}");
 
             var v = _settings.Verify;
-            if (e.Granted && v.SkipGranted)
+            if (unreadable)
+            {
+                // Không có mã để gửi Verify API, cũng không lọc trùng theo mã: luôn hỏi người vận hành.
+                e.Pending = true;
+                e.VerifyNote = "Đang chờ người vận hành...";
+                _ = VerifyAndDecideAsync(e, unreadable: true);
+            }
+            else if (e.Granted && v.SkipGranted)
             {
                 e.DoorOpened = true;
                 e.VerifyNote = "Controller";
@@ -232,7 +243,7 @@ public partial class MainForm : Form
     /// Xác thực một lượt quét: có Verify API thì gọi API, chưa cấu hình (hoặc API lỗi và chọn hỏi)
     /// thì hiện popup cho người vận hành. Cho phép → ControlDevice mở cửa.
     /// </summary>
-    private async Task VerifyAndDecideAsync(AccessEvent e)
+    private async Task VerifyAndDecideAsync(AccessEvent e, bool unreadable = false)
     {
         var v = _settings.Verify.Clone();
         var seconds = v.OpenSeconds;
@@ -241,7 +252,14 @@ public partial class MainForm : Form
 
         try
         {
-            if (v.IsConfigured)
+            if (unreadable)
+            {
+                (open, note) = await AskOperatorAsync(e,
+                    "Đầu đọc gửi mã 0: không đọc được nội dung QR (QR chứa chữ hoặc vượt định dạng Wiegand).",
+                    v.PromptTimeoutSeconds);
+                note = "Mã 0 → " + note;
+            }
+            else if (v.IsConfigured)
             {
                 var r = await VerifyApiClient.VerifyAsync(v, e, _deviceSerial);
                 if (r.Success)
@@ -573,7 +591,9 @@ public partial class MainForm : Form
         txtIp.Text = _settings.Ip;
         numPort.Value = Math.Clamp(_settings.Port, (int)numPort.Minimum, (int)numPort.Maximum);
         numTimeout.Value = Math.Clamp(_settings.TimeoutMs, (int)numTimeout.Minimum, (int)numTimeout.Maximum);
-        numPoll.Value = Math.Clamp(_settings.PollIntervalMs, (int)numPoll.Minimum, (int)numPoll.Maximum);
+        // Giá trị cũ ngoài khoảng (vd. 6100 do gõ nhầm) thì về mặc định thay vì kẹp ở mức tối đa vẫn còn chậm.
+        numPoll.Value = _settings.PollIntervalMs >= numPoll.Minimum && _settings.PollIntervalMs <= numPoll.Maximum
+            ? _settings.PollIntervalMs : new AppSettings().PollIntervalMs;
         numOpenSeconds.Value = Math.Clamp(_settings.OpenSeconds, (int)numOpenSeconds.Minimum, (int)numOpenSeconds.Maximum);
         chkAutoReconnect.Checked = _settings.AutoReconnect;
     }

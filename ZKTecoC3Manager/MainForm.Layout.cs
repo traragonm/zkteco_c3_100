@@ -160,7 +160,8 @@ partial class MainForm
         numPort = Num(1, 65535, 4370);
         numTimeout = Num(500, 60000, 4000, 500);
         txtPassword = new TextBox { UseSystemPasswordChar = true, PlaceholderText = "(trống)" };
-        numPoll = Num(100, 10000, 500, 100);
+        // Chu kỳ dài làm popup hiện chậm (lượt quét chờ tới lần đọc kế tiếp), nên giới hạn 2 giây.
+        numPoll = Num(100, 2000, 500, 100);
         chkAutoReconnect = new ToggleSwitch { Text = "Tự kết nối lại khi mất kết nối", Checked = true, Margin = new Padding(0, 2, 0, 12) };
         btnConnect = new ModernButton
         {

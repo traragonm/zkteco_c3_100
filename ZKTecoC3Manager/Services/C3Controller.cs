@@ -28,6 +28,7 @@ public sealed class C3Controller : IDisposable
 {
     private const int MaxPollFailures = 3;
     private const int ReconnectDelayMs = 3000;
+    private const int DrainDelayMs = 50;
 
     private readonly AppLogger _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -166,6 +167,7 @@ public sealed class C3Controller : IDisposable
 
         while (!ct.IsCancellationRequested)
         {
+            var gotEvents = false;
             var ret = await CallAsync(h =>
             {
                 Array.Clear(_rtBuffer);
@@ -176,7 +178,7 @@ public sealed class C3Controller : IDisposable
             {
                 if (failures > 0) _log.Info("GetRTLog đã phục hồi");
                 failures = 0;
-                HandleRtLog(DecodeBuffer(_rtBuffer), events, statuses);
+                gotEvents = HandleRtLog(DecodeBuffer(_rtBuffer), events, statuses);
             }
             else
             {
@@ -196,13 +198,16 @@ public sealed class C3Controller : IDisposable
                 }
             }
 
-            await Task.Delay(_settings!.PollIntervalMs, ct);
+            // C3 chỉ trả 1 sự kiện mỗi lần GetRTLog: vừa có sự kiện thì đọc tiếp ngay
+            // để lấy hết hàng đợi trên thiết bị, không bắt lượt quét sau chờ thêm một chu kỳ.
+            await Task.Delay(gotEvents ? DrainDelayMs : _settings!.PollIntervalMs, ct);
         }
     }
 
-    private void HandleRtLog(string raw, List<AccessEvent> events, List<DoorStatus> statuses)
+    /// <returns>true nếu có sự kiện (không tính bản ghi trạng thái).</returns>
+    private bool HandleRtLog(string raw, List<AccessEvent> events, List<DoorStatus> statuses)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
 
         events.Clear();
         statuses.Clear();
@@ -211,6 +216,7 @@ public sealed class C3Controller : IDisposable
         foreach (var e in events) _log.Debug($"RTLog: {e.Raw}");
         if (events.Count > 0) EventsReceived?.Invoke(events.ToArray());
         if (statuses.Count > 0) StatusReceived?.Invoke(statuses[^1]);
+        return events.Count > 0;
     }
 
     private async Task ReconnectAsync(CancellationToken ct)

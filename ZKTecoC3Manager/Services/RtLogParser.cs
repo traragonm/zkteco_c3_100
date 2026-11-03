@@ -47,8 +47,18 @@ public static class RtLogParser
     }
 
     /// <summary>Sự kiện có ý nghĩa với việc quét QR/thẻ (bỏ qua các sự kiện cửa đóng/mở, aux input...).</summary>
-    public static bool IsScanEvent(AccessEvent e) =>
-        !string.IsNullOrEmpty(e.Code) && e.Code != "0";
+    public static bool IsScanEvent(AccessEvent e) => HasCode(e) || IsUnreadableScan(e);
+
+    /// <summary>
+    /// Có người quét nhưng controller báo số thẻ = 0: đầu đọc gửi mã không chuyển được thành số thẻ
+    /// (QR chứa chữ, hoặc số vượt quá định dạng Wiegand đang cài).
+    /// </summary>
+    public static bool IsUnreadableScan(AccessEvent e) => !HasCode(e) && IsCardRejection(e.EventType);
+
+    private static bool HasCode(AccessEvent e) => !string.IsNullOrEmpty(e.Code) && e.Code != "0";
+
+    /// <summary>Sự kiện controller từ chối một lượt quét thẻ/QR (không tính sự kiện cửa, báo động...).</summary>
+    private static bool IsCardRejection(int t) => t is 20 or 22 or 23 or 24 or 25 or 26 or 27 or 29 or 30 or 36;
 
     private static bool IsGranted(int t) => t is 0 or 1 or 3 or 14 or 15 or 16 or 17 or 18 or 19;
 

@@ -14,9 +14,6 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
-  <!-- Đặt các DLL của PullSDK (plcommpro.dll, plcomms.dll, plrscomm.dll,
-       pltcpcomm.dll, plusbcomm.dll, rscagent.dll, rscomm.dll, tcpcomm.dll,
-       usbcomm.dll, usbstd.dll...) vào thư mục ZKTecoSDK để tự copy ra output. -->
   <!-- MainForm.Layout.cs là phần dựng giao diện bằng code của MainForm, không phải form riêng:
        không mở bằng Designer và không nhúng resx riêng (tránh trùng ZKTecoC3Manager.MainForm.resources). -->
   <ItemGroup>
@@ -27,9 +24,20 @@
     <EmbeddedResource Remove="MainForm.Layout.resx" />
   </ItemGroup>
 
+  <!-- Mọi DLL trong ZKTecoSDK\ (PullSDK + QRCoder.dll) được copy ra cạnh exe khi build (bin\...)
+       và khi publish. Thêm/thay DLL chỉ cần chép vào ZKTecoSDK\ rồi build lại. -->
   <ItemGroup>
-    <None Include="ZKTecoSDK\*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="ZKTecoSDK\*.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- Báo ngay lúc build nếu thiếu plcommpro.dll, thay vì đợi DllNotFoundException khi bấm Kết nối. -->
+  <Target Name="CheckPullSdkDlls" AfterTargets="Build">
+    <Warning Condition="!Exists('$(OutDir)plcommpro.dll')"
+             Text="Không thấy plcommpro.dll trong $(OutDir). Hãy chép bộ DLL PullSDK vào ZKTecoSDK\ rồi build lại." />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.6.0" />

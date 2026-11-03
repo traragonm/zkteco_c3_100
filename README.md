@@ -22,7 +22,7 @@
 | Windows 10/11 | Icon dùng font Segoe MDL2 Assets có sẵn trong Windows |
 | .NET 8 SDK (để build) | https://dotnet.microsoft.com/download/dotnet/8.0 |
 | **.NET 8 Desktop Runtime x86** (để chạy) | PullSDK thường là DLL 32-bit nên app build x86 |
-| PullSDK của ZKTeco | **Không có sẵn trong repo**, xem bước 2 bên dưới |
+| PullSDK của ZKTeco | Có sẵn trong `ZKTecoC3Manager\ZKTecoSDK\`, xem mục [Đưa DLL vào thư mục bin](#đưa-dll-vào-thư-mục-bin) |
 | ZKTeco C3-100 + đầu đọc QR | Ví dụ QR500/QR600 nối vào controller qua Wiegand/RS485 |
 
 ## Cài đặt
@@ -41,6 +41,66 @@
    Hoặc mở `ZKTecoC3Manager\ZKTecoC3Manager.csproj` bằng Visual Studio 2022 rồi bấm F5.
 
 > Nếu bộ PullSDK của bạn là bản **64-bit**, đổi `<PlatformTarget>x86</PlatformTarget>` thành `x64` trong `ZKTecoC3Manager.csproj`.
+
+## Đưa DLL vào thư mục bin
+
+App gọi `plcommpro.dll` qua P/Invoke, nên lúc chạy **các DLL của PullSDK phải nằm cùng thư mục với `ZKTecoC3Manager.exe`**. Nếu thiếu, app báo `DllNotFoundException: plcommpro.dll` ngay khi bấm Kết nối.
+
+### Cách 1: Tự động khi build (mặc định)
+
+Không cần làm gì thêm. `ZKTecoC3Manager.csproj` đã cấu hình để **mỗi lần build hoặc publish**, mọi file `ZKTecoSDK\*.dll` tự được copy ra cạnh exe:
+
+```xml
+<None Include="ZKTecoSDK\*.dll"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+      Link="%(Filename)%(Extension)" />
+```
+
+```
+dotnet build ZKTecoC3Manager -c Release
+```
+
+DLL sẽ có trong `ZKTecoC3Manager\bin\Release\net8.0-windows\` (bản Debug nằm ở `bin\Debug\net8.0-windows\`). Build bằng Visual Studio (F5 / Ctrl+Shift+B) cũng vậy.
+
+- Muốn thêm hoặc thay DLL: chép vào `ZKTecoSDK\` rồi build lại. Nếu bin chưa cập nhật, chạy **Rebuild** (hoặc `dotnet build --no-incremental`).
+- Sau mỗi lần build, project tự kiểm tra: nếu bin không có `plcommpro.dll`, build sẽ hiện cảnh báo *"Không thấy plcommpro.dll trong ..."* để bạn biết trước khi chạy app.
+
+### Cách 2: Chép tay vào bin
+
+Chỉ cần khi chạy file exe build từ nơi khác, hoặc khi bin vẫn bị thiếu DLL. Mở PowerShell ở thư mục gốc repo:
+
+```powershell
+# Bản Release
+Copy-Item ZKTecoC3Manager\ZKTecoSDK\*.dll ZKTecoC3Manager\bin\Release\net8.0-windows\ -Force
+
+# Bản Debug
+Copy-Item ZKTecoC3Manager\ZKTecoSDK\*.dll ZKTecoC3Manager\bin\Debug\net8.0-windows\ -Force
+```
+
+Hoặc bằng Explorer: chọn **tất cả** file `.dll` trong `ZKTecoC3Manager\ZKTecoSDK\` rồi dán vào thư mục chứa `ZKTecoC3Manager.exe`.
+
+### Cách 3: Đóng gói để chạy trên máy khác
+
+```
+dotnet publish ZKTecoC3Manager -c Release -o publish
+```
+
+Thư mục `publish\` chứa exe kèm đủ DLL. Chép nguyên thư mục này sang máy cần chạy (máy đó cần cài **.NET 8 Desktop Runtime x86**).
+
+### Kiểm tra
+
+Thư mục chứa exe phải có đủ các file sau (đừng chép lẻ từng file, các DLL phụ thuộc lẫn nhau):
+
+```
+ZKTecoC3Manager.exe
+QRCoder.dll
+plcommpro.dll   plcomms.dll   plrscagent.dll   plrscomm.dll   pltcpcomm.dll
+commpro.dll     comms.dll     rscagent.dll     rscomm.dll     tcpcomm.dll
+usbcomm.dll     zkemkeeper.dll   zkemsdk.dll
+```
+
+Nếu vẫn lỗi `DllNotFoundException` dù đã đủ file, cài thêm **Visual C++ Redistributable x86**. Nếu lỗi `BadImageFormatException`, kiểm tra `PlatformTarget` (xem mục Xử lý sự cố).
 
 ## Hướng dẫn sử dụng
 
@@ -160,7 +220,7 @@ Nằm trong thư mục `logs\` cạnh file exe (icon thư mục trên header m�
 
 | Lỗi | Cách xử lý |
 |---|---|
-| `DllNotFoundException: plcommpro.dll` | Chưa chép DLL vào `ZKTecoC3Manager\ZKTecoSDK\`, hoặc thiếu DLL phụ thuộc. Chép **đủ** bộ DLL rồi Rebuild. Một số bản SDK cần thêm Visual C++ Redistributable x86 |
+| `DllNotFoundException: plcommpro.dll` | Thư mục chứa exe thiếu DLL. Rebuild, hoặc chép tay theo mục [Đưa DLL vào thư mục bin](#đưa-dll-vào-thư-mục-bin). Một số bản SDK cần thêm Visual C++ Redistributable x86 |
 | `BadImageFormatException` / "Sai kiến trúc DLL" | DLL 32-bit mà app chạy 64-bit, hoặc ngược lại. Sửa `PlatformTarget` cho khớp |
 | Không chạy được app x86 | Cài **.NET 8 Desktop Runtime x86** |
 | Connect lỗi `-307` | Sai IP/cổng, hoặc PC không cùng mạng với controller |

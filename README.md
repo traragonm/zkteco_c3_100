@@ -32,8 +32,8 @@
    git clone <url-repo>
    cd zkteco_c3_100
    ```
-2. **Chép DLL của PullSDK** vào `ZKTecoC3Manager\ZKTecoSDK\`. Chép **tất cả** các file `.dll` trong bộ SDK: `plcommpro.dll`, `plcomms.dll`, `plrscagent.dll`, `plrscomm.dll`, `pltcpcomm.dll`, `plusbcomm.dll`, `rscagent.dll`, `rscomm.dll`, `tcpcomm.dll`, `usbcomm.dll`, `usbstd.dll`... Khi build, các DLL này được tự copy ra cạnh file exe.
-   > Các DLL này là phần mềm của ZKTeco nên không đưa lên repo. Bạn tải PullSDK từ ZKTeco hoặc lấy từ nhà cung cấp thiết bị.
+2. **DLL của PullSDK** đã có sẵn trong `ZKTecoC3Manager\ZKTecoSDK\` (kèm `QRCoder.dll`). Khi build, các DLL này được tự copy ra cạnh file exe.
+   > Nếu thiết bị của bạn cần bản SDK khác, thay các file `.dll` trong thư mục này bằng bộ PullSDK từ ZKTeco hoặc nhà cung cấp thiết bị.
 3. **Build và chạy**
    ```
    dotnet run --project ZKTecoC3Manager
@@ -184,7 +184,7 @@ ZKTecoC3Manager/
 ├─ UI/                         Theme và các control tự vẽ (card, nút, tab...)
 ├─ MainForm.cs                 Logic màn hình chính
 ├─ MainForm.Layout.cs          Dựng giao diện bằng code (không dùng Designer)
-└─ ZKTecoSDK/                  ← chép DLL PullSDK vào đây
+└─ ZKTecoSDK/                  DLL PullSDK (và QRCoder.dll)
 ```
 
 > Giao diện được dựng bằng code. Hãy mở các form bằng **View Code (F7)**, đừng mở bằng Designer.

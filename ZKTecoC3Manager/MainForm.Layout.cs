@@ -24,6 +24,11 @@ partial class MainForm
     private Label lblVerifyUrl = null!;
     private ModernButton btnVerifySettings = null!;
 
+    private TextBox txtReaderIp = null!;
+    private NumericUpDown numReaderPort = null!, numReaderDoor = null!;
+    private ToggleSwitch chkReaderAutoConnect = null!;
+    private ModernButton btnReaderConnect = null!;
+
     private StatCard statStatus = null!, statScans = null!, statOkDeny = null!, statDoor = null!;
     private SegmentedTabs tabs = null!;
     private DataGridView gridEvents = null!;
@@ -32,7 +37,7 @@ partial class MainForm
     private ToggleSwitch chkShowDebug = null!;
     private ModernButton btnExport = null!, btnClear = null!;
 
-    private Label stConn = null!, stPoll = null!, stLogFile = null!, stEventFile = null!;
+    private Label stReader = null!, stConn = null!, stPoll = null!, stLogFile = null!, stEventFile = null!;
     private readonly ToolTip tips = new();
 
     private void BuildLayout()
@@ -84,7 +89,7 @@ partial class MainForm
             Margin = Padding.Empty,
         };
         titles.Controls.Add(new Label { Text = "ZKTeco C3-100 Manager", AutoSize = true, Font = Theme.AppTitle, ForeColor = Color.White, Margin = Padding.Empty });
-        titles.Controls.Add(new Label { Text = "Access control · PullSDK", AutoSize = true, Font = Theme.Small, ForeColor = Theme.NavyMuted, Margin = Padding.Empty });
+        titles.Controls.Add(new Label { Text = "Đầu đọc QR RS485 → LAN · mở cửa qua PullSDK", AutoSize = true, Font = Theme.Small, ForeColor = Theme.NavyMuted, Margin = Padding.Empty });
 
         pillConn = new PillLabel { ShowDot = true, Anchor = AnchorStyles.Right, Margin = new Padding(0, 0, 10, 0), Padding = new Padding(12, 6, 12, 6) };
 
@@ -124,11 +129,12 @@ partial class MainForm
             using var pen = new Pen(Theme.Border);
             e.Graphics.DrawLine(pen, 0, 0, footer.Width, 0);
         };
+        stReader = FooterLabel();
         stConn = FooterLabel();
         stPoll = FooterLabel();
         stLogFile = FooterLabel();
         stEventFile = FooterLabel();
-        footer.Controls.AddRange([stConn, stPoll, stLogFile, stEventFile]);
+        footer.Controls.AddRange([stReader, stConn, stPoll, stLogFile, stEventFile]);
         return footer;
     }
 
@@ -147,7 +153,8 @@ partial class MainForm
             AutoScroll = true, Margin = new Padding(0, 0, 8, 0), Padding = Padding.Empty,
         };
 
-        col.Controls.Add(Card("Kết nối", Glyph.Connect, BuildConnectionContent()));
+        col.Controls.Add(Card("Đầu đọc QR (RS485 → LAN)", Glyph.QrCode, BuildReaderContent()));
+        col.Controls.Add(Card("Controller C3-100 (mở cửa)", Glyph.Connect, BuildConnectionContent()));
         col.Controls.Add(Card("Thiết bị", Glyph.Devices, BuildDeviceContent()));
         col.Controls.Add(Card("Điều khiển cửa", Glyph.Lock, BuildDoorContent()));
         col.Controls.Add(Card("Xác thực QR / Card", Glyph.Shield, BuildVerifyContent()));
@@ -175,6 +182,27 @@ partial class MainForm
         AddFields(t, ("Mật khẩu", txtPassword, 1), ("Chu kỳ đọc (ms)", numPoll, 1));
         AddRow(t, chkAutoReconnect);
         AddRow(t, btnConnect);
+        return t;
+    }
+
+    private Control BuildReaderContent()
+    {
+        txtReaderIp = new TextBox();
+        numReaderPort = Num(1, 65535, 4196);
+        numReaderDoor = Num(1, 4, 1);
+        chkReaderAutoConnect = new ToggleSwitch { Text = "Tự kết nối khi mở ứng dụng", Margin = new Padding(0, 2, 0, 12) };
+        btnReaderConnect = new ModernButton
+        {
+            Text = "Kết nối đầu đọc", Glyph = Glyph.Connect, Variant = ButtonVariant.Primary, Height = 40, Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+        };
+        tips.SetToolTip(numReaderDoor, "Cửa trên C3-100 sẽ mở khi mã quét từ đầu đọc này hợp lệ");
+
+        var t = Grid2();
+        AddFields(t, ("IP Waveshare", txtReaderIp, 2));
+        AddFields(t, ("Cổng TCP", numReaderPort, 1), ("Mở cửa số", numReaderDoor, 1));
+        AddRow(t, chkReaderAutoConnect);
+        AddRow(t, btnReaderConnect);
         return t;
     }
 
@@ -265,7 +293,7 @@ partial class MainForm
 
         var stats = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty };
         for (var i = 0; i < 4; i++) stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        statStatus = Stat("Trạng thái", Glyph.Wifi, Theme.DangerTint, Theme.Danger, new Padding(0, 0, 7, 16));
+        statStatus = Stat("Đầu đọc QR", Glyph.Wifi, Theme.DangerTint, Theme.Danger, new Padding(0, 0, 7, 16));
         statScans = Stat("Lượt quét QR", Glyph.QrCode, Theme.PrimaryTint, Theme.Primary, new Padding(7, 0, 7, 16));
         statOkDeny = Stat("Hợp lệ / Từ chối", Glyph.Shield, Theme.SuccessTint, Theme.Success, new Padding(7, 0, 7, 16));
         statDoor = Stat("Cửa 1", Glyph.Lock, Theme.WarningTint, Theme.Warning, new Padding(7, 0, 0, 16));
@@ -362,7 +390,7 @@ partial class MainForm
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             TextRenderer.DrawText(e.Graphics, "Chưa có lượt quét nào", Theme.UiSemibold,
                 new Rectangle(area.X, icon.Bottom + 6, area.Width, 22), Theme.Muted, TextFormatFlags.HorizontalCenter);
-            TextRenderer.DrawText(e.Graphics, "Kết nối thiết bị và quét mã QR / thẻ để xem sự kiện tại đây.", Theme.Small,
+            TextRenderer.DrawText(e.Graphics, "Kết nối đầu đọc (Waveshare) và quét mã QR / thẻ để xem sự kiện tại đây.", Theme.Small,
                 new Rectangle(area.X, icon.Bottom + 30, area.Width, 20), Theme.Faint, TextFormatFlags.HorizontalCenter);
         };
 

@@ -1,13 +1,13 @@
 # ZKTeco C3-100 Manager
 
-Ứng dụng Windows (WinForms, .NET 8) kết nối bộ điều khiển kiểm soát ra vào **ZKTeco C3-100** qua PullSDK, ghi lại sự kiện quét **QR / thẻ**, xác thực mã quét qua **API của bạn** (hoặc hỏi người vận hành) rồi mở cửa, và lưu log kết nối.
+Ứng dụng Windows (WinForms, .NET 8) đọc mã **QR / thẻ** từ đầu đọc RS485 qua bộ chuyển **Waveshare RS485 TO ETH** (TCP), xác thực mã quét qua **API của bạn** (hoặc hỏi người vận hành) rồi mở cửa trên bộ điều khiển **ZKTeco C3-100** qua PullSDK, và lưu log kết nối.
 
 ![Màn hình chính](docs/screenshot-main.png)
 
 ## Tính năng
 
-- **Kết nối TCP/IP** tới C3-100, tự kết nối lại khi mất kết nối.
-- **Theo dõi sự kiện thời gian thực** (`GetRTLog`): mỗi lượt quét QR/thẻ hiện trong bảng và được ghi vào file CSV theo ngày.
+- **Đọc QR qua Waveshare RS485 TO ETH**: app là TCP client nối tới Waveshare (chế độ Transparent, TCP Server, mặc định cổng `4196`), tự kết nối lại khi mất kết nối. Mỗi lượt quét hiện trong bảng và được ghi vào file CSV theo ngày.
+- **Kết nối TCP/IP** tới C3-100 để mở/đóng cửa, tự kết nối lại khi mất kết nối. Sự kiện `GetRTLog` của C3 (cửa mở/đóng, nút exit...) chỉ ghi vào log.
 - **Verify API**: gửi mã vừa quét tới API của bạn (URL, Headers, Body tuỳ chỉnh). API trả về cho phép thì app ra lệnh mở cửa.
 - **Xác thực thủ công**: chưa cấu hình API thì hiện popup hỏi người vận hành có mở cửa không, có đếm ngược và tự từ chối khi hết giờ.
 - **Điều khiển cửa**: mở N giây hoặc đóng ngay.
@@ -23,7 +23,8 @@
 | .NET 8 SDK (để build) | https://dotnet.microsoft.com/download/dotnet/8.0 |
 | **.NET 8 Desktop Runtime x86** (để chạy) | PullSDK thường là DLL 32-bit nên app build x86 |
 | PullSDK của ZKTeco | Có sẵn trong `ZKTecoC3Manager\ZKTecoSDK\`, xem mục [Đưa DLL vào thư mục bin](#đưa-dll-vào-thư-mục-bin) |
-| ZKTeco C3-100 + đầu đọc QR | Ví dụ QR500/QR600 nối vào controller qua Wiegand/RS485 |
+| Đầu đọc QR RS485 + Waveshare RS485 TO ETH | Waveshare để chế độ **Transparent / TCP Server**, baudrate khớp với đầu đọc |
+| ZKTeco C3-100 | Dùng để mở cửa (relay) theo kết quả xác thực |
 
 ## Cài đặt
 
@@ -104,9 +105,18 @@ Nếu vẫn lỗi `DllNotFoundException` dù đã đủ file, cài thêm **Visua
 
 ## Hướng dẫn sử dụng
 
-### 1. Kết nối thiết bị
+### 1. Kết nối đầu đọc QR (Waveshare)
 
-1. Ở card **Kết nối**, nhập **Địa chỉ IP** của C3-100. Cổng mặc định là `4370`.
+1. Cấu hình Waveshare (bằng web hoặc Vircom): **Work mode = TCP Server**, **Protocol = Transparent** (không bật Modbus), **baudrate / data bits / parity** khớp với đầu đọc QR. Nối dây A/B của đầu đọc vào A/B của Waveshare.
+2. Ở card **Đầu đọc QR (RS485 → LAN)**, nhập **IP Waveshare** (mặc định `192.168.1.254`) và **Cổng TCP** (mặc định `4196`).
+3. **Mở cửa số** là cửa trên C3-100 sẽ mở khi lượt quét từ đầu đọc này hợp lệ.
+4. Bấm **Kết nối đầu đọc** (phím tắt **F6**). Thẻ **Đầu đọc QR** trên cùng chuyển xanh "Online". Bật **Tự kết nối khi mở ứng dụng** nếu app chạy liên tục.
+
+App gom dữ liệu thành một lượt quét khi gặp ký tự xuống dòng (CR/LF) hoặc khi đường truyền im lặng 150 ms. Bật **Hiện DEBUG** ở tab **Log kết nối** để xem từng gói HEX nhận được. Nếu dữ liệu toàn ký tự rác, app vẫn ghi lượt quét và hỏi người vận hành, kèm cảnh báo kiểm tra **baudrate** / **đảo dây A-B**.
+
+### 2. Kết nối controller C3-100 (để mở cửa)
+
+1. Ở card **Controller C3-100 (mở cửa)**, nhập **Địa chỉ IP** của C3-100. Cổng mặc định là `4370`.
 2. Điền **Mật khẩu** nếu controller có đặt comm key; không đặt thì để trống.
 3. **Chu kỳ đọc** là khoảng thời gian giữa các lần app hỏi sự kiện mới từ thiết bị. 500 ms là hợp lý.
 4. Bật **Tự kết nối lại khi mất kết nối** nếu app chạy liên tục.
@@ -117,7 +127,7 @@ Nếu vẫn lỗi `DllNotFoundException` dù đã đủ file, cài thêm **Visua
 
 Thông số kết nối được lưu vào `settings.json` cạnh file exe, nên lần sau mở lại không phải nhập lại.
 
-### 2. Theo dõi sự kiện quét QR / thẻ
+### 3. Theo dõi sự kiện quét QR / thẻ
 
 Tab **Sự kiện quét QR** hiện mỗi lượt quét: thời gian, cửa và hướng (vào/ra), mã QR/thẻ, PIN, sự kiện controller báo về, cách xác thực và **Kết quả**:
 
@@ -133,11 +143,11 @@ Bốn thẻ trên cùng hiện trạng thái kết nối, tổng lượt quét, 
 - **Xuất CSV** (Ctrl+S): lưu danh sách đang hiển thị ra một file CSV.
 - **Xoá**: xoá danh sách trên màn hình. File log trên đĩa vẫn giữ nguyên.
 
-### 3. Xác thực QR / Card bằng API
+### 4. Xác thực QR / Card bằng API
 
 Mở **Cài đặt xác thực...** (nút ở card **Xác thực QR / Card**, hoặc icon bánh răng trên header).
 
-> **Quan trọng:** để app được quyết định mở cửa, mã QR/thẻ **không được đăng ký** trên controller. Khi đó controller báo "Thẻ chưa đăng ký", app gọi API, và nếu được phép thì gửi lệnh mở cửa. Mã đã đăng ký thì controller tự mở cửa.
+> Mã QR được đọc trực tiếp từ đầu đọc qua Waveshare, không đi qua C3-100: app luôn tự xác thực (API hoặc popup) và gửi lệnh mở cửa lên C3 khi được phép. Cần kết nối C3 thì mới mở được cửa.
 
 | Trường | Mô tả |
 |---|---|
@@ -149,7 +159,6 @@ Mở **Cài đặt xác thực...** (nút ở card **Xác thực QR / Card**, ho
 | Timeout (ms) | Quá thời gian này thì coi là API lỗi |
 | Trường kết quả JSON | Mặc định `allow`; hỗ trợ trường lồng như `data.allow` |
 | Khi API lỗi | Hỏi người vận hành (popup), hoặc Từ chối luôn |
-| Bỏ qua lượt quét controller đã cho phép | Không gọi API cho mã đã đăng ký trên thiết bị |
 | Mở cửa (giây) | Thời gian mở khoá khi được phép |
 | Bỏ quét trùng (giây) | Bỏ qua cùng một mã quét lặp lại trong khoảng này |
 | Popup tự đóng (giây) | Hết thời gian thì tự từ chối |
@@ -192,7 +201,7 @@ Trong URL, giá trị được mã hoá cho URL (URL-encode). Trong body JSON, g
 
 Bấm **Kiểm tra API** để gửi thử một mã mẫu (`TEST-QR-0001`) và xem phản hồi trước khi lưu.
 
-### 4. Xác thực thủ công (popup)
+### 5. Xác thực thủ công (popup)
 
 Khi chưa cấu hình API, mỗi lượt quét bị controller từ chối sẽ hiện popup **"Mở cửa cho lượt quét này?"** kèm mã, cửa, PIN, thời gian và lý do:
 
@@ -201,7 +210,7 @@ Khi chưa cấu hình API, mỗi lượt quét bị controller từ chối sẽ 
 - Không trả lời trước khi hết giờ đếm ngược thì tự **từ chối**.
 - Nhiều lượt quét cùng lúc thì popup lần lượt hiện từng cái. Lượt nào chờ quá lâu thì bị huỷ.
 
-### 5. Điều khiển cửa và thiết bị
+### 6. Điều khiển cửa và thiết bị
 
 - **Mở cửa**: mở khoá cửa đã chọn trong số giây đã nhập (1–254).
 - **Đóng cửa**: khoá cửa ngay.

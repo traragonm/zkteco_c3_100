@@ -80,6 +80,8 @@ public sealed class VerifySettingsForm : Form
         {
             Text = "Bỏ qua lượt quét controller đã cho phép (chỉ xác thực thẻ/QR bị từ chối)",
             Margin = new Padding(0, 0, 0, 10),
+            // Mã QR giờ đọc từ đầu đọc qua Waveshare, không qua controller nên không có lượt "controller đã cho phép".
+            Visible = false,
         };
         numOpenSeconds = Num(1, 254, 1);
         numDuplicate = Num(0, 60, 1);

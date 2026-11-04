@@ -17,6 +17,7 @@ public partial class MainForm : Form
     private readonly AppLogger _logger;
     private readonly EventCsvWriter _eventWriter;
     private readonly C3Controller _device;
+    private readonly QrReaderClient _reader;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly BindingList<AccessEvent> _events = new();
     private readonly List<LogEntry> _logHistory = new();
@@ -36,12 +37,15 @@ public partial class MainForm : Form
         _logger = new AppLogger(_logDir);
         _eventWriter = new EventCsvWriter(_logDir);
         _device = new C3Controller(_logger);
+        _reader = new QrReaderClient(_logger);
 
         _logger.Logged += e => Ui(() => AppendLog(e));
         _device.StateChanged += s => Ui(() => ApplyState(s));
         _device.EventsReceived += list => Ui(() => OnEvents(list));
         _device.StatusReceived += st => Ui(() => OnDoorStatus(st));
         _device.DeviceInfoReceived += info => Ui(() => ShowDeviceInfo(info));
+        _reader.StateChanged += s => Ui(() => ApplyReaderState(s));
+        _reader.FrameReceived += f => Ui(() => OnReaderFrame(f));
 
         gridEvents.DataSource = _events;
         gridEvents.CellPainting += GridEvents_CellPainting;
@@ -65,6 +69,7 @@ public partial class MainForm : Form
             if (_device.State == ConnectionState.Disconnected) await ConnectAsync();
             else await _device.DisconnectAsync();
         };
+        btnReaderConnect.Click += async (_, _) => await ToggleReaderAsync();
         btnSyncTime.Click += async (_, _) => await RunGuarded(btnSyncTime, _device.SyncTimeAsync);
         btnOpenDoor.Click += async (_, _) => await RunGuarded(btnOpenDoor, () => _device.SetDoorAsync(SelectedDoor, (int)numOpenSeconds.Value));
         btnCloseDoor.Click += async (_, _) => await RunGuarded(btnCloseDoor, () => _device.SetDoorAsync(SelectedDoor, 0));
@@ -76,12 +81,14 @@ public partial class MainForm : Form
         btnHeaderSettings.Click += (_, _) => OpenVerifySettings();
         btnLogDir.Click += (_, _) => Process.Start(new ProcessStartInfo(_logDir) { UseShellExecute = true });
         btnAbout.Click += (_, _) => MessageBox.Show(this,
-            "ZKTeco C3-100 Manager\nKết nối qua PullSDK (plcommpro.dll), ghi sự kiện quét QR và log kết nối.\n\n" +
-            "Phím tắt: F5 kết nối · Shift+F5 ngắt kết nối · Ctrl+S xuất CSV",
+            "ZKTeco C3-100 Manager\nĐọc mã QR / thẻ từ đầu đọc RS485 qua Waveshare RS485 TO ETH (TCP),\n" +
+            "xác thực rồi mở cửa trên C3-100 qua PullSDK (plcommpro.dll), ghi sự kiện và log kết nối.\n\n" +
+            "Phím tắt: F6 kết nối/ngắt đầu đọc · F5 kết nối C3 · Shift+F5 ngắt C3 · Ctrl+S xuất CSV",
             "Giới thiệu", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
         LoadSettings();
         ApplyState(ConnectionState.Disconnected);
+        ApplyReaderState(ReaderState.Disconnected);
         UpdateCounters();
         UpdateVerifyInfo();
         stLogFile.Text = "Log: " + Path.GetRelativePath(AppContext.BaseDirectory, _logger.CurrentFile);
@@ -92,6 +99,7 @@ public partial class MainForm : Form
     {
         base.OnLoad(e);
         _logger.Info($"Khởi động ứng dụng ({(Environment.Is64BitProcess ? "x64" : "x86")}), thư mục log: {_logDir}");
+        if (_settings.ReaderAutoConnect) _ = ToggleReaderAsync();
     }
 
     private int SelectedDoor => cboDoor.SelectedItem is int d ? d : 1;
@@ -119,6 +127,80 @@ public partial class MainForm : Form
                 "Kết nối", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
+    // ---------------------------------------------------------------- đầu đọc QR (Waveshare)
+
+    private async Task ToggleReaderAsync()
+    {
+        if (_reader.State != ReaderState.Disconnected)
+        {
+            await _reader.StopAsync();
+            return;
+        }
+
+        var ip = txtReaderIp.Text.Trim();
+        if (!System.Net.IPAddress.TryParse(ip, out _))
+        {
+            MessageBox.Show(this, "Địa chỉ IP của Waveshare không hợp lệ.", "Đầu đọc QR", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            txtReaderIp.Focus();
+            return;
+        }
+        SaveSettings();
+        _reader.Start(new ReaderSettings(ip, (int)numReaderPort.Value));
+    }
+
+    private void ApplyReaderState(ReaderState s)
+    {
+        var idle = s == ReaderState.Disconnected;
+        foreach (var c in new Control[] { txtReaderIp, numReaderPort }) c.Enabled = idle;
+
+        (btnReaderConnect.Text, btnReaderConnect.Variant) = s switch
+        {
+            ReaderState.Connected => ("Ngắt đầu đọc", ButtonVariant.DangerOutline),
+            ReaderState.Connecting => ("Đang kết nối... (huỷ)", ButtonVariant.DangerOutline),
+            ReaderState.Reconnecting => ("Dừng kết nối lại", ButtonVariant.DangerOutline),
+            _ => ("Kết nối đầu đọc", ButtonVariant.Primary),
+        };
+
+        var (statText, statColor, statTint) = s switch
+        {
+            ReaderState.Connected => ("Online", Theme.Success, Theme.SuccessTint),
+            ReaderState.Connecting => ("Đang kết nối", Theme.Warning, Theme.WarningTint),
+            ReaderState.Reconnecting => ("Kết nối lại", Theme.Warning, Theme.WarningTint),
+            _ => ("Offline", Theme.Danger, Theme.DangerTint),
+        };
+        statStatus.SetIcon(Glyph.Wifi, statTint, statColor);
+        statStatus.SetValue(statText, statColor);
+
+        var target = _reader.Settings is { } rs ? $"{rs.Ip}:{rs.Port}" : "";
+        stReader.Text = s switch
+        {
+            ReaderState.Connected => $"Đầu đọc: {target}",
+            ReaderState.Connecting => $"Đầu đọc: đang kết nối {target}...",
+            ReaderState.Reconnecting => $"Đầu đọc: mất kết nối {target}, đang thử lại...",
+            _ => "Đầu đọc: chưa kết nối",
+        };
+    }
+
+    private void OnReaderFrame(ReaderFrame f)
+    {
+        var code = f.Text;
+        var e = new AccessEvent
+        {
+            Time = f.Time,
+            Door = (int)numReaderDoor.Value,
+            Direction = "Vào",
+            Code = code,
+            EventName = "Đầu đọc QR (RS485)",
+            Raw = f.Hex,
+        };
+        _logger.Debug($"Đầu đọc QR: {f.Data.Length} byte HEX={f.Hex}");
+        ProcessScan(e, f.LooksGarbled || code.Length == 0
+            ? $"Dữ liệu đầu đọc không đọc được ({f.Data.Length} byte, HEX {Truncate(f.Hex, 48)}). Kiểm tra baudrate Waveshare / đảo dây A-B."
+            : null);
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
     private void ApplyState(ConnectionState s)
     {
         var connected = s == ConnectionState.Connected;
@@ -139,28 +221,18 @@ public partial class MainForm : Form
         var target = _device.Settings is { } cs ? $"{cs.Ip}:{cs.Port}" : "";
         (pillConn.Text, pillConn.PillColor, pillConn.ForeColor) = s switch
         {
-            ConnectionState.Connected => ($"Đã kết nối · {target}", Theme.PillOnlineBg, Theme.PillOnlineFg),
+            ConnectionState.Connected => ($"C3 đã kết nối · {target}", Theme.PillOnlineBg, Theme.PillOnlineFg),
             ConnectionState.Connecting => ($"Đang kết nối · {target}", Theme.PillBusyBg, Theme.PillBusyFg),
-            ConnectionState.Reconnecting => ($"Mất kết nối · đang thử lại", Theme.PillBusyBg, Theme.PillBusyFg),
-            _ => ("Chưa kết nối", Theme.PillOfflineBg, Theme.PillOfflineFg),
+            ConnectionState.Reconnecting => ($"C3 mất kết nối · đang thử lại", Theme.PillBusyBg, Theme.PillBusyFg),
+            _ => ("C3 chưa kết nối", Theme.PillOfflineBg, Theme.PillOfflineFg),
         };
-
-        var (statText, statColor, statTint) = s switch
-        {
-            ConnectionState.Connected => ("Online", Theme.Success, Theme.SuccessTint),
-            ConnectionState.Connecting => ("Đang kết nối", Theme.Warning, Theme.WarningTint),
-            ConnectionState.Reconnecting => ("Kết nối lại", Theme.Warning, Theme.WarningTint),
-            _ => ("Offline", Theme.Danger, Theme.DangerTint),
-        };
-        statStatus.SetIcon(Glyph.Wifi, statTint, statColor);
-        statStatus.SetValue(statText, statColor);
 
         stConn.Text = s switch
         {
-            ConnectionState.Connected => $"Đã kết nối {target}",
-            ConnectionState.Connecting => $"Đang kết nối {target}...",
-            ConnectionState.Reconnecting => $"Mất kết nối {target}, đang thử lại...",
-            _ => "Chưa kết nối",
+            ConnectionState.Connected => $"C3: {target}",
+            ConnectionState.Connecting => $"C3: đang kết nối {target}...",
+            ConnectionState.Reconnecting => $"C3: mất kết nối {target}, đang thử lại...",
+            _ => "C3: chưa kết nối",
         };
         stPoll.Text = connected ? $"Polling: {numPoll.Value} ms" : "Polling: dừng";
 
@@ -187,50 +259,46 @@ public partial class MainForm : Form
 
     // ---------------------------------------------------------------- sự kiện
 
+    /// <summary>
+    /// Sự kiện từ GetRTLog của C3. Mã QR giờ đọc từ đầu đọc qua Waveshare (<see cref="OnReaderFrame"/>),
+    /// nên ở đây chỉ ghi log (cửa mở/đóng, nút exit, lượt quét trên đầu đọc nối thẳng vào C3...).
+    /// </summary>
     private void OnEvents(IReadOnlyList<AccessEvent> list)
     {
         foreach (var e in list)
         {
-            if (!RtLogParser.IsScanEvent(e))
-            {
-                // Sự kiện cửa (mở/đóng, nút exit...) không phải lượt quét: chỉ ghi vào log.
-                _logger.Info($"Cửa {e.Door}: {e.EventName}");
-                continue;
-            }
+            var code = string.IsNullOrEmpty(e.Code) || e.Code == "0" ? "" : $", mã {e.Code}";
+            _logger.Info($"C3 cửa {e.Door}: {e.EventName}{code}");
+        }
+    }
 
-            _events.Insert(0, e);
-            var unreadable = RtLogParser.IsUnreadableScan(e);
-            if (unreadable)
-                _logger.Warn($"Quét QR cửa {e.Door} ({e.Direction}): đầu đọc gửi mã 0 (không đọc được nội dung QR), controller: {e.EventName}");
-            else
-                _logger.Info($"Quét QR cửa {e.Door} ({e.Direction}): {e.Code}, PIN={e.Pin}, controller: {e.EventName}");
+    /// <summary>Đưa một lượt quét vào bảng rồi xác thực / mở cửa.</summary>
+    /// <param name="unreadableReason">Khác null khi không lấy được mã: không gọi API, luôn hỏi người vận hành.</param>
+    private void ProcessScan(AccessEvent e, string? unreadableReason)
+    {
+        _events.Insert(0, e);
+        if (unreadableReason is not null)
+            _logger.Warn($"Quét cửa {e.Door}: {unreadableReason}");
+        else
+            _logger.Info($"Quét QR cửa {e.Door}: {e.Code}");
 
-            var v = _settings.Verify;
-            if (unreadable)
-            {
-                // Không có mã để gửi Verify API, cũng không lọc trùng theo mã: luôn hỏi người vận hành.
-                e.Pending = true;
-                e.VerifyNote = "Đang chờ người vận hành...";
-                _ = VerifyAndDecideAsync(e, unreadable: true);
-            }
-            else if (e.Granted && v.SkipGranted)
-            {
-                e.DoorOpened = true;
-                e.VerifyNote = "Controller";
-                Complete(e);
-            }
-            else if (IsDuplicate(e, v.DuplicateWindowSeconds))
-            {
-                e.DoorOpened = e.Granted;
-                e.VerifyNote = "Bỏ qua (quét trùng)";
-                Complete(e);
-            }
-            else
-            {
-                e.Pending = true;
-                e.VerifyNote = "Đang xác thực...";
-                _ = VerifyAndDecideAsync(e);
-            }
+        var v = _settings.Verify;
+        if (unreadableReason is not null)
+        {
+            e.Pending = true;
+            e.VerifyNote = "Đang chờ người vận hành...";
+            _ = VerifyAndDecideAsync(e, unreadableReason);
+        }
+        else if (IsDuplicate(e, v.DuplicateWindowSeconds))
+        {
+            e.VerifyNote = "Bỏ qua (quét trùng)";
+            Complete(e);
+        }
+        else
+        {
+            e.Pending = true;
+            e.VerifyNote = "Đang xác thực...";
+            _ = VerifyAndDecideAsync(e);
         }
 
         while (_events.Count > MaxGridRows) _events.RemoveAt(_events.Count - 1);
@@ -243,7 +311,7 @@ public partial class MainForm : Form
     /// Xác thực một lượt quét: có Verify API thì gọi API, chưa cấu hình (hoặc API lỗi và chọn hỏi)
     /// thì hiện popup cho người vận hành. Cho phép → ControlDevice mở cửa.
     /// </summary>
-    private async Task VerifyAndDecideAsync(AccessEvent e, bool unreadable = false)
+    private async Task VerifyAndDecideAsync(AccessEvent e, string? unreadableReason = null)
     {
         var v = _settings.Verify.Clone();
         var seconds = v.OpenSeconds;
@@ -252,12 +320,10 @@ public partial class MainForm : Form
 
         try
         {
-            if (unreadable)
+            if (unreadableReason is not null)
             {
-                (open, note) = await AskOperatorAsync(e,
-                    "Đầu đọc gửi mã 0: không đọc được nội dung QR (QR chứa chữ hoặc vượt định dạng Wiegand).",
-                    v.PromptTimeoutSeconds);
-                note = "Mã 0 → " + note;
+                (open, note) = await AskOperatorAsync(e, unreadableReason, v.PromptTimeoutSeconds);
+                note = "Mã lỗi → " + note;
             }
             else if (v.IsConfigured)
             {
@@ -289,7 +355,7 @@ public partial class MainForm : Form
             e.DoorOpened = e.Granted;
             if (open && !e.Granted)
             {
-                if (!_device.IsConnected) note += " (mất kết nối, không mở được)";
+                if (!_device.IsConnected) note += " (chưa kết nối C3, không mở được)";
                 else if (await _device.SetDoorAsync(e.Door > 0 ? e.Door : 1, seconds)) e.DoorOpened = true;
                 else note += " (lệnh mở cửa lỗi)";
             }
@@ -473,6 +539,9 @@ public partial class MainForm : Form
     {
         switch (keyData)
         {
+            case Keys.F6:
+                _ = ToggleReaderAsync();
+                return true;
             case Keys.F5:
                 _ = ConnectAsync();
                 return true;
@@ -596,6 +665,10 @@ public partial class MainForm : Form
             ? _settings.PollIntervalMs : new AppSettings().PollIntervalMs;
         numOpenSeconds.Value = Math.Clamp(_settings.OpenSeconds, (int)numOpenSeconds.Minimum, (int)numOpenSeconds.Maximum);
         chkAutoReconnect.Checked = _settings.AutoReconnect;
+        txtReaderIp.Text = _settings.ReaderIp;
+        numReaderPort.Value = Math.Clamp(_settings.ReaderPort, (int)numReaderPort.Minimum, (int)numReaderPort.Maximum);
+        numReaderDoor.Value = Math.Clamp(_settings.ReaderDoor, (int)numReaderDoor.Minimum, (int)numReaderDoor.Maximum);
+        chkReaderAutoConnect.Checked = _settings.ReaderAutoConnect;
     }
 
     private void SaveSettings()
@@ -606,12 +679,16 @@ public partial class MainForm : Form
         _settings.PollIntervalMs = (int)numPoll.Value;
         _settings.OpenSeconds = (int)numOpenSeconds.Value;
         _settings.AutoReconnect = chkAutoReconnect.Checked;
+        _settings.ReaderIp = txtReaderIp.Text.Trim();
+        _settings.ReaderPort = (int)numReaderPort.Value;
+        _settings.ReaderDoor = (int)numReaderDoor.Value;
+        _settings.ReaderAutoConnect = chkReaderAutoConnect.Checked;
         _settings.Save();
     }
 
     protected override async void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_closing || _device.State == ConnectionState.Disconnected)
+        if (_closing || (_device.State == ConnectionState.Disconnected && _reader.State == ReaderState.Disconnected))
         {
             SaveSettings();
             base.OnFormClosing(e);
@@ -621,6 +698,7 @@ public partial class MainForm : Form
         // Ngắt kết nối gọn gàng trước khi đóng form.
         e.Cancel = true;
         Enabled = false;
+        await _reader.StopAsync();
         await _device.DisconnectAsync();
         _closing = true;
         Close();
@@ -628,6 +706,7 @@ public partial class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _reader.Dispose();
         _device.Dispose();
         base.OnFormClosed(e);
     }
